@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import CityResults from './components/CityResults';
 import CitySearch from './components/CitySearch';
 import CurrentWeather from './components/CurrentWeather';
@@ -8,11 +8,11 @@ import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import TemperatureUnitToggle from './components/TemperatureUnitToggle';
+import { useTemperatureUnit } from './hooks/useTemperatureUnit';
 import { useWeather } from './hooks/useWeather';
-import type { TemperatureUnit } from './types/weather';
 
 export default function App() {
-  const [unit, setUnit] = useState<TemperatureUnit>('C');
+  const { unit, setUnit, persistenceError } = useTemperatureUnit();
   const weather = useWeather();
   const { state } = weather;
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -61,7 +61,14 @@ export default function App() {
                 />
               </div>
             </div>
-            <TemperatureUnitToggle unit={unit} onChange={setUnit} />
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <TemperatureUnitToggle unit={unit} onChange={setUnit} />
+              {persistenceError && (
+                <p role="alert" className="text-sm text-rose-300">
+                  {persistenceError}
+                </p>
+              )}
+            </div>
           </div>
         </header>
 
