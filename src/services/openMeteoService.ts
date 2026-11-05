@@ -1,7 +1,13 @@
 import { getCurrentDateInSaoPaulo, getNextFiveDatesInSaoPaulo } from '../lib/date';
 import { normalizeCityQuery } from '../lib/normalizeCityQuery';
 import { mapWeatherCode } from '../lib/weatherCode';
-import type { City, CurrentWeather, ForecastDay, WeatherSnapshot } from '../types/weather';
+import type {
+  City,
+  Coordinates,
+  CurrentWeather,
+  ForecastDay,
+  WeatherSnapshot,
+} from '../types/weather';
 
 const GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -157,7 +163,7 @@ export async function searchCities(name: string, signal?: AbortSignal): Promise<
   });
 }
 
-function weatherUrl(city: City): string {
+function weatherUrl(city: Coordinates): string {
   if (
     boundedNumber(city.latitude, -90, 90) === undefined ||
     boundedNumber(city.longitude, -180, 180) === undefined
@@ -291,7 +297,10 @@ function hasUsableForecast(forecast: ForecastDay[]): boolean {
   );
 }
 
-export async function getWeather(city: City, signal?: AbortSignal): Promise<WeatherSnapshot> {
+export async function getWeather(
+  city: Coordinates,
+  signal?: AbortSignal,
+): Promise<WeatherSnapshot> {
   const response = await fetchWithTimeout(weatherUrl(city), signal);
   const payload = await readJson(response, 'a previsão do tempo');
 

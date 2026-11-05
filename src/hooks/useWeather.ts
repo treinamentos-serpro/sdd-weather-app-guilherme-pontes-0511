@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getCurrentLocation, GeolocationServiceError } from '../services/geolocationService';
 import { getWeather, searchCities, WeatherServiceError } from '../services/openMeteoService';
 import type { City, WeatherLocation, WeatherSnapshot } from '../types/weather';
 
@@ -8,7 +9,8 @@ type WeatherState =
   | { status: 'idle'; query: ''; cities: [] }
   | { status: 'searching'; query: string; cities: [] }
   | { status: 'results'; query: string; cities: City[] }
-  | { status: 'loadingWeather'; query: string; cities: City[]; city: City }
+  | { status: 'locating'; query: string; cities: [] }
+  | { status: 'loadingWeather'; query: string; cities: City[]; source: 'city' | 'current' }
   | {
       status: 'ready';
       query: string;
@@ -19,7 +21,10 @@ type WeatherState =
   | { status: 'empty'; query: string; cities: [] }
   | { status: 'error'; query: string; cities: City[]; message: string };
 
-type LastAction = { type: 'search'; query: string } | { type: 'selectCity'; city: City };
+type LastAction =
+  | { type: 'search'; query: string }
+  | { type: 'selectCity'; city: City }
+  | { type: 'currentLocation' };
 
 interface ActiveOperation {
   id: number;
@@ -28,7 +33,7 @@ interface ActiveOperation {
 }
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof WeatherServiceError) {
+  if (error instanceof WeatherServiceError || error instanceof GeolocationServiceError) {
     return error.message;
   }
 
@@ -61,6 +66,7 @@ export interface UseWeatherResult {
   state: WeatherState;
   search: (name: string) => void;
   selectCity: (city: City) => void;
+  useCurrentLocation: () => void;
   retry: () => void;
 }
 
@@ -158,7 +164,7 @@ export function useWeather(): UseWeatherResult {
           message: 'A consulta do clima demorou mais de 30 segundos. Tente novamente.',
         });
       });
-      setState({ status: 'loadingWeather', query, cities: [], city });
+      setState({ status: 'loadingWeather', query, cities: [], source: 'city' });
 
       try {
         const snapshot = await withRetry(
@@ -192,6 +198,67 @@ export function useWeather(): UseWeatherResult {
     [beginOperation, finishOperation, isCurrentOperation],
   );
 
+  const performCurrentLocation = useCallback(async () => {
+    const operation = beginOperation(() => {
+      setState({
+        status: 'error',
+        query: '',
+        cities: [],
+        message:
+          'A consulta da localização demorou mais de 30 segundos. Tente novamente ou busque uma cidade.',
+      });
+    });
+    setState({ status: 'locating', query: '', cities: [] });
+
+    try {
+      const location = await getCurrentLocation(operation.controller.signal);
+      if (!isCurrentOperation(operation)) return;
+
+      setState({ status: 'loadingWeather', query: '', cities: [], source: 'current' });
+      const snapshot = await withRetry(
+        () => getWeather(location, operation.controller.signal),
+        operation.controller.signal,
+      );
+      if (!isCurrentOperation(operation)) return;
+
+      setState({
+        status: 'ready',
+        query: '',
+        cities: [],
+        location: {
+          id: 'current',
+          label: 'Local atual',
+          source: 'current',
+          isApproximate: location.accuracyMeters > 0,
+          accuracyMeters: location.accuracyMeters,
+        },
+        snapshot,
+      });
+    } catch (error) {
+      if (isCurrentOperation(operation)) {
+        setState({
+          status: 'error',
+          query: '',
+          cities: [],
+          message: getErrorMessage(error),
+        });
+      }
+    } finally {
+      finishOperation(operation);
+    }
+  }, [beginOperation, finishOperation, isCurrentOperation]);
+
+  const useCurrentLocation = useCallback(() => {
+    if (
+      state.status === 'locating' ||
+      (state.status === 'loadingWeather' && state.source === 'current')
+    ) {
+      return;
+    }
+    lastAction.current = { type: 'currentLocation' };
+    void performCurrentLocation();
+  }, [performCurrentLocation, state]);
+
   const search = useCallback(
     (name: string) => {
       const query = name.trim();
@@ -220,8 +287,10 @@ export function useWeather(): UseWeatherResult {
       void performSearch(action.query);
     } else if (action?.type === 'selectCity') {
       void performCitySelection(action.city, state.query || action.city.name);
+    } else if (action?.type === 'currentLocation') {
+      void performCurrentLocation();
     }
-  }, [performCitySelection, performSearch, state.query]);
+  }, [performCitySelection, performCurrentLocation, performSearch, state.query]);
 
   useEffect(
     () => () => {
@@ -232,5 +301,5 @@ export function useWeather(): UseWeatherResult {
     [],
   );
 
-  return { state, search, selectCity, retry };
+  return { state, search, selectCity, useCurrentLocation, retry };
 }

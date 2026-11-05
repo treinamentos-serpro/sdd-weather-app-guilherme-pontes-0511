@@ -5,6 +5,12 @@ import { getWeather, searchCities } from '../../src/services/openMeteoService';
 import App from '../../src/App';
 import { mockWeather } from '../../src/mocks/mockWeather';
 import type { City } from '../../src/types/weather';
+import { getCurrentLocation, GeolocationServiceError } from '../../src/services/geolocationService';
+
+vi.mock('../../src/services/geolocationService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/geolocationService')>()),
+  getCurrentLocation: vi.fn(),
+}));
 
 vi.mock('../../src/services/openMeteoService', () => ({
   getWeather: vi.fn(),
@@ -23,11 +29,53 @@ const saoPaulo: City = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getCurrentLocation).mockResolvedValue({
+    latitude: -23.55,
+    longitude: -46.63,
+    accuracyMeters: 1500,
+  });
   vi.mocked(searchCities).mockResolvedValue([saoPaulo]);
   vi.mocked(getWeather).mockResolvedValue(mockWeather.snapshot);
 });
 
 describe('App', () => {
+  it('loads current location only on activation and communicates approximate location', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(getCurrentLocation).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Usar localização atual' }));
+
+    expect(await screen.findByRole('region', { name: 'Local atual' })).toHaveTextContent('22 °C');
+    expect(screen.getByText('Localização aproximada')).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(searchCities).not.toHaveBeenCalled();
+  });
+
+  it('keeps city search available after permission is denied', async () => {
+    vi.mocked(getCurrentLocation).mockRejectedValueOnce(new GeolocationServiceError('denied'));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Usar localização atual' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Permissão de localização negada');
+
+    await user.type(screen.getByRole('searchbox', { name: 'Cidade' }), 'São Paulo');
+    await user.click(screen.getByRole('button', { name: 'Buscar' }));
+    await user.click(await screen.findByRole('button', { name: /São Paulo/ }));
+    expect(await screen.findByRole('region', { name: 'São Paulo' })).toBeInTheDocument();
+  });
+
+  it('communicates pending location, blocks repeated clicks and keeps city search enabled', async () => {
+    vi.mocked(getCurrentLocation).mockReturnValueOnce(new Promise(() => {}));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Usar localização atual' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Obtendo sua localização...');
+    expect(screen.getByRole('button', { name: 'Usar localização atual' })).toBeDisabled();
+    expect(screen.getByRole('searchbox', { name: 'Cidade' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Buscar' })).toBeEnabled();
+  });
+
   it('does not show mock weather before a city is selected', () => {
     render(<App />);
 
