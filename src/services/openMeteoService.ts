@@ -46,7 +46,11 @@ function isValidIsoDate(value: unknown): value is string {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Response> {
+async function fetchJsonWithTimeout(
+  url: string,
+  endpoint: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const controller = new AbortController();
   let timedOut = false;
   const timeoutId = setTimeout(() => {
@@ -55,10 +59,31 @@ async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Resp
   }, REQUEST_TIMEOUT_MS);
   const abortFromCaller = () => controller.abort();
 
+  if (signal?.aborted) {
+    clearTimeout(timeoutId);
+    throw new WeatherServiceError('A solicitação foi cancelada.');
+  }
+
   signal?.addEventListener('abort', abortFromCaller, { once: true });
 
   try {
-    return await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { signal: controller.signal });
+
+    if (!response.ok) {
+      throw new WeatherServiceError(
+        `Não foi possível consultar ${endpoint}. Tente novamente mais tarde.`,
+      );
+    }
+
+    try {
+      return await response.json();
+    } catch (error) {
+      if (timedOut || signal?.aborted) {
+        throw error;
+      }
+
+      throw new WeatherServiceError('A fonte de dados retornou uma resposta inválida.');
+    }
   } catch (error) {
     if (signal?.aborted) {
       throw new WeatherServiceError('A solicitação foi cancelada.');
@@ -72,24 +97,14 @@ async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Resp
       throw new WeatherServiceError('A requisição demorou demais.');
     }
 
+    if (error instanceof WeatherServiceError) {
+      throw error;
+    }
+
     throw new WeatherServiceError('Falha de rede. Verifique sua conexão e tente novamente.');
   } finally {
     clearTimeout(timeoutId);
     signal?.removeEventListener('abort', abortFromCaller);
-  }
-}
-
-async function readJson(response: Response, endpoint: string): Promise<unknown> {
-  if (!response.ok) {
-    throw new WeatherServiceError(
-      `Não foi possível consultar ${endpoint}. Tente novamente mais tarde.`,
-    );
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    throw new WeatherServiceError('A fonte de dados retornou uma resposta inválida.');
   }
 }
 
@@ -142,8 +157,11 @@ export async function searchCities(name: string, signal?: AbortSignal): Promise<
     language: 'pt',
     format: 'json',
   });
-  const response = await fetchWithTimeout(`${GEOCODING_URL}?${params}`, signal);
-  const payload = await readJson(response, 'a busca de cidades');
+  const payload = await fetchJsonWithTimeout(
+    `${GEOCODING_URL}?${params}`,
+    'a busca de cidades',
+    signal,
+  );
 
   if (!isJsonObject(payload)) {
     throw new WeatherServiceError('A fonte de dados retornou uma resposta inválida.');
@@ -280,7 +298,17 @@ function mapCurrent(
     condition: weatherCode === undefined ? undefined : mapWeatherCode(weatherCode),
   };
 
-  if (Object.values(currentWeather).every((value) => value === undefined)) {
+  if (
+    [
+      currentWeather.temperatureC,
+      currentWeather.minimumC,
+      currentWeather.maximumC,
+      currentWeather.feelsLikeC,
+      currentWeather.humidityPercent,
+      currentWeather.rainProbabilityPercent,
+      currentWeather.condition,
+    ].every((value) => value === undefined)
+  ) {
     return undefined;
   }
 
@@ -301,8 +329,7 @@ export async function getWeather(
   city: Coordinates,
   signal?: AbortSignal,
 ): Promise<WeatherSnapshot> {
-  const response = await fetchWithTimeout(weatherUrl(city), signal);
-  const payload = await readJson(response, 'a previsão do tempo');
+  const payload = await fetchJsonWithTimeout(weatherUrl(city), 'a previsão do tempo', signal);
 
   if (!isJsonObject(payload)) {
     throw new WeatherServiceError('A fonte de dados retornou uma resposta inválida.');

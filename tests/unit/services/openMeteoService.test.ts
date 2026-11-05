@@ -143,6 +143,33 @@ describe('searchCities', () => {
 
     await rejection;
   });
+
+  it('keeps the timeout active while reading the response body', async () => {
+    let requestSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: string, options: RequestInit) => {
+      requestSignal = options.signal as AbortSignal;
+      const pendingResponse = new Response();
+      vi.spyOn(pendingResponse, 'json').mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            requestSignal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Aborted', 'AbortError')),
+              { once: true },
+            );
+          }),
+      );
+      return Promise.resolve(pendingResponse);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = searchCities('Lisboa');
+    const rejection = expect(request).rejects.toThrow('A requisição demorou demais');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejection;
+    expect(requestSignal?.aborted).toBe(true);
+  });
 });
 
 describe('getWeather', () => {
@@ -253,6 +280,22 @@ describe('getWeather', () => {
     ]);
     expect(partial.current?.humidityPercent).toBeUndefined();
     await expect(getWeather(city)).rejects.toThrow('não retornou informações meteorológicas');
+  });
+
+  it('rejects a response with only the current timestamp and no weather values', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response({
+          current: { time: '2026-11-05T12:00' },
+          daily: {},
+        }),
+      ),
+    );
+
+    await expect(getWeather(city)).rejects.toThrow(
+      'A fonte de dados não retornou informações meteorológicas.',
+    );
   });
 
   it('keeps null and out-of-range precipitation probabilities unavailable', async () => {

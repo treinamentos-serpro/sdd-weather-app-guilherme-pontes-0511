@@ -29,6 +29,7 @@ const saoPaulo: City = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   vi.mocked(getCurrentLocation).mockResolvedValue({
     latitude: -23.55,
     longitude: -46.63,
@@ -126,6 +127,22 @@ describe('App', () => {
       '81 °F',
     );
     expect(getWeather).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists and restores the selected temperature unit', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<App />);
+
+    await user.click(screen.getByRole('button', { name: 'Fahrenheit (°F)' }));
+    expect(window.localStorage.getItem('weather-app:temperature-unit')).toBe('F');
+
+    unmount();
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: 'Fahrenheit (°F)' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('shows an empty state when the search returns no cities', async () => {

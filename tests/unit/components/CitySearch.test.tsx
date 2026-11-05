@@ -7,7 +7,7 @@ describe('CitySearch', () => {
     const user = userEvent.setup();
     const onSearch = vi.fn<(city: string) => void>();
 
-    render(<CitySearch onSearch={onSearch} />);
+    render(<CitySearch onSearch={onSearch} onLocate={vi.fn()} locationPending={false} />);
 
     expect(screen.getByRole('search', { name: 'Buscar cidade' })).toBeInTheDocument();
 
@@ -22,7 +22,7 @@ describe('CitySearch', () => {
     const user = userEvent.setup();
     const onSearch = vi.fn<(city: string) => void>();
 
-    render(<CitySearch onSearch={onSearch} />);
+    render(<CitySearch onSearch={onSearch} onLocate={vi.fn()} locationPending={false} />);
 
     const cityInput = screen.getByRole('searchbox', { name: 'Cidade' });
     await user.type(cityInput, 'São Paulo');
@@ -32,11 +32,27 @@ describe('CitySearch', () => {
     expect(onSearch).toHaveBeenCalledWith('São Paulo');
   });
 
+  it('starts current-location lookup from the icon button without submitting the search', async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn<(city: string) => void>();
+    const onLocate = vi.fn();
+
+    render(<CitySearch onSearch={onSearch} onLocate={onLocate} locationPending={false} />);
+
+    const locationButton = screen.getByRole('button', { name: 'Usar localização atual' });
+    expect(locationButton).not.toHaveTextContent(/\S/);
+    expect(locationButton.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    await user.click(locationButton);
+
+    expect(onLocate).toHaveBeenCalledOnce();
+    expect(onSearch).not.toHaveBeenCalled();
+  });
+
   it('announces that a city is required for empty and whitespace-only input', async () => {
     const user = userEvent.setup();
     const onSearch = vi.fn<(city: string) => void>();
 
-    render(<CitySearch onSearch={onSearch} />);
+    render(<CitySearch onSearch={onSearch} onLocate={vi.fn()} locationPending={false} />);
 
     const cityInput = screen.getByRole('searchbox', { name: 'Cidade' });
     const searchButton = screen.getByRole('button', { name: 'Buscar' });
@@ -56,10 +72,15 @@ describe('CitySearch', () => {
   it('keeps the typed city when disabled', async () => {
     const user = userEvent.setup();
     const onSearch = vi.fn<(city: string) => void>();
-    const { rerender } = render(<CitySearch onSearch={onSearch} />);
+    const onLocate = vi.fn();
+    const { rerender } = render(
+      <CitySearch onSearch={onSearch} onLocate={onLocate} locationPending={false} />,
+    );
 
     await user.type(screen.getByRole('searchbox', { name: 'Cidade' }), 'Manaus');
-    rerender(<CitySearch onSearch={onSearch} disabled />);
+    rerender(
+      <CitySearch onSearch={onSearch} onLocate={onLocate} locationPending={false} disabled />,
+    );
 
     expect(screen.getByRole('searchbox', { name: 'Cidade' })).toHaveValue('Manaus');
     expect(screen.getByRole('searchbox', { name: 'Cidade' })).toBeDisabled();

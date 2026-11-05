@@ -1,12 +1,21 @@
 import { type FormEvent, useId, useState } from 'react';
+import LocationButton from './LocationButton';
 
 interface CitySearchProps {
   onSearch: (city: string) => void;
+  onLocate: () => void;
   disabled?: boolean;
   busy?: boolean;
+  locationPending: boolean;
 }
 
-export default function CitySearch({ onSearch, disabled = false, busy = false }: CitySearchProps) {
+export default function CitySearch({
+  onSearch,
+  onLocate,
+  disabled = false,
+  busy = false,
+  locationPending,
+}: CitySearchProps) {
   const inputId = useId();
   const validationMessageId = useId();
   const [city, setCity] = useState('');
@@ -57,13 +66,16 @@ export default function CitySearch({ onSearch, disabled = false, busy = false }:
           placeholder="Ex.: São Paulo"
           className="h-12 min-w-0 flex-1 rounded-xl border border-white/10 bg-night-800/80 px-4 text-white placeholder:text-slate-400 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-400/50 disabled:cursor-not-allowed disabled:opacity-60"
         />
-        <button
-          type="submit"
-          disabled={disabled}
-          className="inline-flex h-12 items-center justify-center rounded-xl bg-accent-500 px-5 font-semibold text-night-900 transition-colors hover:bg-accent-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:ring-offset-night-900 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-accent-500 sm:min-w-28"
-        >
-          Buscar
-        </button>
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={disabled}
+            className="inline-flex h-12 flex-1 items-center justify-center rounded-xl bg-accent-500 px-5 font-semibold text-night-900 transition-colors hover:bg-accent-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:ring-offset-night-900 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-accent-500 sm:flex-none sm:min-w-28"
+          >
+            Buscar
+          </button>
+          <LocationButton onLocate={onLocate} pending={locationPending} />
+        </div>
       </div>
       {validationMessage && (
         <p id={validationMessageId} role="alert" className="mt-3 text-sm text-rose-300">

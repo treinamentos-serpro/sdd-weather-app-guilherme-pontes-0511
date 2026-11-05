@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import CityResults from './components/CityResults';
 import CitySearch from './components/CitySearch';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
-import LocationButton from './components/LocationButton';
 import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import TemperatureUnitToggle from './components/TemperatureUnitToggle';
+import { useTemperatureUnit } from './hooks/useTemperatureUnit';
 import { useWeather } from './hooks/useWeather';
-import type { TemperatureUnit } from './types/weather';
 
 export default function App() {
-  const [unit, setUnit] = useState<TemperatureUnit>('C');
+  const { unit, setUnit, persistenceError } = useTemperatureUnit();
   const weather = useWeather();
   const { state } = weather;
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -50,18 +49,24 @@ export default function App() {
 
           <div className="flex min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center sm:justify-end">
             <div className="min-w-0 sm:w-full sm:max-w-md">
-              <CitySearch onSearch={weather.search} busy={isLoading} />
-              <div className="mt-3">
-                <LocationButton
-                  onLocate={weather.useCurrentLocation}
-                  pending={
-                    state.status === 'locating' ||
-                    (state.status === 'loadingWeather' && state.source === 'current')
-                  }
-                />
-              </div>
+              <CitySearch
+                onSearch={weather.search}
+                onLocate={weather.useCurrentLocation}
+                busy={isLoading}
+                locationPending={
+                  state.status === 'locating' ||
+                  (state.status === 'loadingWeather' && state.source === 'current')
+                }
+              />
             </div>
-            <TemperatureUnitToggle unit={unit} onChange={setUnit} />
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <TemperatureUnitToggle unit={unit} onChange={setUnit} />
+              {persistenceError && (
+                <p role="alert" className="text-sm text-rose-300">
+                  {persistenceError}
+                </p>
+              )}
+            </div>
           </div>
         </header>
 
