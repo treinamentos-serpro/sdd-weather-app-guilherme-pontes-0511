@@ -99,6 +99,12 @@ Decisões-chave:
   toggle °C/°F **não** faz nova requisição).
 - **Rede isolada** em `services/` — componentes e hooks não conhecem URLs.
 - Sempre tratar **loading**, **erro** e **vazio**.
+- **Localização atual** somente pelo botão “Usar localização atual”, em HTTPS
+  (ou localhost) e com permissão do navegador. Sem nome disponível, a tela mostra
+  “Local atual”. A precisão reportada é um raio de incerteza: valores maiores
+  que zero são identificados como localização aproximada. Coordenadas são
+  transitórias, sem persistência ou logs. A operação tem limite de 30 segundos;
+  em caso de falha, a busca por cidade continua disponível.
 
 ---
 

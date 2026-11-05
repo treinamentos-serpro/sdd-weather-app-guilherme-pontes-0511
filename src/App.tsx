@@ -3,6 +3,7 @@ import CitySearch from './components/CitySearch';
 import CityResults from './components/CityResults';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
+import LocationButton from './components/LocationButton';
 import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
@@ -34,18 +35,32 @@ export default function App() {
           <div className="flex min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center sm:justify-end">
             <div className="min-w-0 sm:w-full sm:max-w-md">
               <CitySearch onSearch={weather.search} />
+              <div className="mt-3">
+                <LocationButton
+                  onLocate={weather.useCurrentLocation}
+                  pending={
+                    state.status === 'locating' ||
+                    (state.status === 'loadingWeather' && state.source === 'current')
+                  }
+                />
+              </div>
             </div>
             <TemperatureUnitToggle unit={unit} onChange={setUnit} />
           </div>
         </header>
 
         <main className="flex flex-1 flex-col gap-8">
-          {state.status === 'searching' && (
-            <LoadingState message="Buscando cidades..." />
-          )}
+          {state.status === 'searching' && <LoadingState message="Buscando cidades..." />}
           {state.status === 'loadingWeather' && (
-            <LoadingState message="Carregando o clima da cidade..." />
+            <LoadingState
+              message={
+                state.source === 'current'
+                  ? 'Carregando o clima da localização atual...'
+                  : 'Carregando o clima da cidade...'
+              }
+            />
           )}
+          {state.status === 'locating' && <LoadingState message="Obtendo sua localização..." />}
           {(state.status === 'results' ||
             (state.status === 'error' && state.cities.length > 0)) && (
             <CityResults cities={state.cities} onSelect={weather.selectCity} />
