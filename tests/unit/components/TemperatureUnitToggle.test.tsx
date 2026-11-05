@@ -1,7 +1,31 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
+import CurrentWeather from '../../../src/components/CurrentWeather';
 import TemperatureUnitToggle from '../../../src/components/TemperatureUnitToggle';
-import type { TemperatureUnit } from '../../../src/types/weather';
+import type {
+  CurrentWeather as CurrentWeatherData,
+  TemperatureUnit,
+  WeatherLocation,
+} from '../../../src/types/weather';
+
+const recife: WeatherLocation = {
+  id: 'recife',
+  label: 'Recife',
+  region: 'Pernambuco',
+  source: 'city',
+  isApproximate: false,
+};
+
+const freezingPoint: CurrentWeatherData = {
+  temperatureC: 0,
+  minimumC: 0,
+  maximumC: 0,
+  feelsLikeC: 0,
+  humidityPercent: 50,
+  rainProbabilityPercent: 0,
+  condition: { code: 0, description: 'Céu limpo' },
+};
 
 describe('TemperatureUnitToggle', () => {
   it('exposes a named group and marks the active unit as pressed', () => {
@@ -51,5 +75,26 @@ describe('TemperatureUnitToggle', () => {
     await user.keyboard(' ');
 
     expect(onChange.mock.calls).toEqual([['C'], ['F']]);
+  });
+
+  it('converts a zero-degree current temperature to 32 degrees when switched to Fahrenheit', async () => {
+    function WeatherWithUnitToggle() {
+      const [unit, setUnit] = useState<TemperatureUnit>('C');
+
+      return (
+        <>
+          <TemperatureUnitToggle unit={unit} onChange={setUnit} />
+          <CurrentWeather location={recife} current={freezingPoint} unit={unit} />
+        </>
+      );
+    }
+
+    const user = userEvent.setup();
+    render(<WeatherWithUnitToggle />);
+
+    expect(screen.getByRole('region', { name: 'Recife' })).toHaveTextContent('0 °C');
+    await user.click(screen.getByRole('button', { name: 'Fahrenheit (°F)' }));
+
+    expect(screen.getByRole('region', { name: 'Recife' })).toHaveTextContent('32 °F');
   });
 });
