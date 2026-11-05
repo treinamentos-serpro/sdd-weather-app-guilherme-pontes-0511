@@ -1,8 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Base path for GitHub Pages. The app is published under /<repo>/app/.
-// Override with VITE_BASE when needed (e.g. local dev uses '/').
+// The Pages workflow supplies its deployment path; local builds default to '/'.
 const base = process.env.VITE_BASE ?? '/';
 
 // https://vitejs.dev/config/
