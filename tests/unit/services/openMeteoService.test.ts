@@ -1,0 +1,199 @@
+import { afterEach, beforeEach, vi } from 'vitest';
+import {
+  getWeather,
+  searchCities,
+  WeatherServiceError,
+} from '../../../src/services/openMeteoService';
+import type { City } from '../../../src/types/weather';
+
+const city: City = {
+  id: 1,
+  name: 'São Paulo',
+  latitude: -23.55,
+  longitude: -46.63,
+};
+
+function response(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status });
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-05T15:00:00.000Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe('searchCities', () => {
+  it('returns an empty list without making a request for blank input', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(searchCities('   ')).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes and encodes the query, mapping only populated places', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      response({
+        results: [
+          {
+            id: 3448439,
+            name: 'São Paulo',
+            latitude: -23.55,
+            longitude: -46.63,
+            admin1: 'São Paulo',
+            country: 'Brasil',
+            feature_code: 'PPLA',
+          },
+          {
+            id: 999,
+            name: 'São Paulo State',
+            latitude: -23.55,
+            longitude: -46.63,
+            feature_code: 'ADM1',
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(searchCities('  São Paulo  ')).resolves.toEqual([
+      {
+        id: 3448439,
+        name: 'São Paulo',
+        latitude: -23.55,
+        longitude: -46.63,
+        region: 'São Paulo',
+        country: 'Brasil',
+      },
+    ]);
+
+    const requestedUrl = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(requestedUrl.searchParams.get('name')).toBe('sao paulo');
+    expect(requestedUrl.searchParams.get('count')).toBe('10');
+    expect(requestedUrl.searchParams.get('language')).toBe('pt');
+    expect(requestedUrl.searchParams.get('format')).toBe('json');
+  });
+
+  it('reports HTTP and network errors with a typed error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({}, 503)));
+    await expect(searchCities('Lisboa')).rejects.toBeInstanceOf(WeatherServiceError);
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
+    await expect(searchCities('Lisboa')).rejects.toThrow('Falha de rede');
+  });
+
+  it('turns an aborted request into a timeout error', async () => {
+    const fetchMock = vi.fn((_url: string, options: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = searchCities('Lisboa');
+    const rejection = expect(request).rejects.toThrow('A requisição demorou demais');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejection;
+  });
+});
+
+describe('getWeather', () => {
+  it('maps current conditions and exactly the next five unique forecast dates', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      response({
+        current: {
+          time: '2026-11-05T12:00',
+          temperature_2m: 22,
+          relative_humidity_2m: 63,
+          apparent_temperature: 21,
+          weather_code: 2,
+        },
+        hourly: {
+          time: ['2026-11-05T12:00'],
+          precipitation_probability: [35],
+        },
+        daily: {
+          time: [
+            '2026-11-05',
+            '2026-11-06',
+            '2026-11-07',
+            '2026-11-08',
+            '2026-11-09',
+            '2026-11-10',
+          ],
+          temperature_2m_min: [18, 19, 18, 17, 18, 18],
+          temperature_2m_max: [27, 27, 26, 24, 25, 27],
+          precipitation_probability_max: [20, 10, 20, 65, 30, 10],
+          weather_code: [2, 1, 2, 61, 3, 0],
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const weather = await getWeather(city);
+
+    expect(weather.current).toMatchObject({
+      temperatureC: 22,
+      minimumC: 18,
+      maximumC: 27,
+      feelsLikeC: 21,
+      humidityPercent: 63,
+      rainProbabilityPercent: 35,
+      condition: { code: 2, description: 'Parcialmente nublado' },
+    });
+    expect(weather.expectedDates).toEqual([
+      '2026-11-06',
+      '2026-11-07',
+      '2026-11-08',
+      '2026-11-09',
+      '2026-11-10',
+    ]);
+    expect(weather.nextFiveDays).toHaveLength(5);
+
+    const requestedUrl = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(requestedUrl.searchParams.get('latitude')).toBe('-23.55');
+    expect(requestedUrl.searchParams.get('current')).toContain('apparent_temperature');
+    expect(requestedUrl.searchParams.get('hourly')).toBe('precipitation_probability');
+    expect(requestedUrl.searchParams.get('daily')).toContain('temperature_2m_min');
+    expect(requestedUrl.searchParams.get('forecast_days')).toBe('6');
+    expect(requestedUrl.searchParams.get('timezone')).toBe('America/Sao_Paulo');
+    expect(requestedUrl.searchParams.get('temperature_unit')).toBe('celsius');
+  });
+
+  it('keeps unavailable fields absent and rejects a response without usable weather data', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce(
+          response({
+            current: { temperature_2m: null, relative_humidity_2m: 110 },
+            daily: {
+              time: ['2026-11-05', '2026-11-06'],
+              temperature_2m_min: [null, 16],
+              temperature_2m_max: [null, 26],
+              precipitation_probability_max: [null, 120],
+              weather_code: [999, 999],
+            },
+          }),
+        )
+        .mockResolvedValueOnce(response({ current: {}, daily: {} })),
+    );
+
+    const partial = await getWeather(city);
+    expect(partial.nextFiveDays).toEqual([
+      { date: '2026-11-06', minimumC: 16, maximumC: 26, rainProbabilityPercent: undefined },
+    ]);
+    expect(partial.current?.humidityPercent).toBeUndefined();
+    await expect(getWeather(city)).rejects.toThrow('não retornou informações meteorológicas');
+  });
+});
