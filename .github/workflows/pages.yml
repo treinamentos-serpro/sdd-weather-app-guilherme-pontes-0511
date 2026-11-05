@@ -4,7 +4,9 @@ on:
   workflow_run:
     workflows: ["SDD Guard"]
     types: [completed]
-    branches: [main, steps/dev]
+    branches: [main]
+  push:
+    branches: [steps/dev]
   workflow_dispatch:
 
 permissions:
