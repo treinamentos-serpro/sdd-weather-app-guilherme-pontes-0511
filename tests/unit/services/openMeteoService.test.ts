@@ -36,6 +36,32 @@ describe('searchCities', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('returns an empty list when the geocoding response has no results', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({}));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(searchCities('Atlantis')).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a malformed results field instead of treating it as an empty search', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ results: {} })));
+
+    await expect(searchCities('Lisboa')).rejects.toBeInstanceOf(WeatherServiceError);
+  });
+
+  it('reports an invalid JSON body as a service error', async () => {
+    const invalidJsonResponse = {
+      ok: true,
+      json: vi.fn().mockRejectedValue(new SyntaxError('invalid JSON')),
+    } as unknown as Response;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(invalidJsonResponse));
+
+    await expect(searchCities('Lisboa')).rejects.toThrow(
+      'A fonte de dados retornou uma resposta inválida.',
+    );
+  });
+
   it('normalizes and encodes the query, mapping only populated places', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       response({
@@ -88,14 +114,15 @@ describe('searchCities', () => {
   });
 
   it('turns an aborted request into a timeout error', async () => {
-    const fetchMock = vi.fn((_url: string, options: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        options.signal?.addEventListener('abort', () => {
-          const error = new Error('aborted');
-          error.name = 'AbortError';
-          reject(error);
-        });
-      }),
+    const fetchMock = vi.fn(
+      (_url: string, options: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          });
+        }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -108,6 +135,25 @@ describe('searchCities', () => {
 });
 
 describe('getWeather', () => {
+  it('does not request weather for invalid city coordinates', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getWeather({ latitude: 91, longitude: -46.63 })).rejects.toThrow(
+      'As coordenadas da cidade são inválidas.',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a non-OK forecast response as a service error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({}, 503)));
+
+    await expect(getWeather(city)).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: expect.stringContaining('Não foi possível consultar a previsão do tempo'),
+    });
+  });
+
   it('maps current conditions and exactly the next five unique forecast dates', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       response({
@@ -173,7 +219,8 @@ describe('getWeather', () => {
   it('keeps unavailable fields absent and rejects a response without usable weather data', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn()
+      vi
+        .fn()
         .mockResolvedValueOnce(
           response({
             current: { temperature_2m: null, relative_humidity_2m: 110 },
@@ -195,5 +242,42 @@ describe('getWeather', () => {
     ]);
     expect(partial.current?.humidityPercent).toBeUndefined();
     await expect(getWeather(city)).rejects.toThrow('não retornou informações meteorológicas');
+  });
+
+  it('keeps null and out-of-range precipitation probabilities unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response({
+          current: {
+            time: '2026-11-05T12:00',
+            temperature_2m: 0,
+          },
+          hourly: {
+            time: ['2026-11-05T12:00'],
+            precipitation_probability: [null],
+          },
+          daily: {
+            time: ['2026-11-05', '2026-11-06'],
+            temperature_2m_min: [null, 0],
+            temperature_2m_max: [null, 10],
+            precipitation_probability_max: [null, 120],
+            weather_code: [null, null],
+          },
+        }),
+      ),
+    );
+
+    const weather = await getWeather(city);
+
+    expect(weather.current?.rainProbabilityPercent).toBeUndefined();
+    expect(weather.nextFiveDays).toEqual([
+      {
+        date: '2026-11-06',
+        minimumC: 0,
+        maximumC: 10,
+        rainProbabilityPercent: undefined,
+      },
+    ]);
   });
 });

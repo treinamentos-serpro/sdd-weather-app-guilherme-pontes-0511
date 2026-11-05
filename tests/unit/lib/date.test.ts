@@ -51,4 +51,13 @@ describe('forecast date utilities', () => {
   it('formats an ISO date as a pt-BR calendar date without timezone shifting', () => {
     expect(formatIsoDatePtBr('2026-11-05')).toBe('05/11/2026');
   });
+
+  it.each([
+    '2026-13-01',
+    '2026-02-29',
+    '05/11/2026',
+    '2026-1-05',
+  ])('rejects invalid ISO calendar dates such as %s', (date) => {
+    expect(() => formatIsoDatePtBr(date)).toThrow(RangeError);
+  });
 });
