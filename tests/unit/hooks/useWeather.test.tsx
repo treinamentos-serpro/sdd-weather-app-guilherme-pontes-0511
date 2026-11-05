@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, vi } from 'vitest';
-import { getWeather, searchCities } from '../../../src/services/openMeteoService';
+import { afterEach, beforeEach, vi } from 'vitest';
 import { useWeather } from '../../../src/hooks/useWeather';
+import { getWeather, searchCities } from '../../../src/services/openMeteoService';
 import type { City, WeatherSnapshot } from '../../../src/types/weather';
 
 vi.mock('../../../src/services/openMeteoService', () => ({
@@ -31,6 +31,10 @@ const snapshot: WeatherSnapshot = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('useWeather', () => {
@@ -71,9 +75,7 @@ describe('useWeather', () => {
 
   it('ignores a weather response after a newer search begins', async () => {
     let resolveWeather: (value: WeatherSnapshot) => void = () => undefined;
-    vi.mocked(searchCities)
-      .mockResolvedValueOnce([firstCity])
-      .mockResolvedValueOnce([secondCity]);
+    vi.mocked(searchCities).mockResolvedValueOnce([firstCity]).mockResolvedValueOnce([secondCity]);
     vi.mocked(getWeather).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -106,5 +108,33 @@ describe('useWeather', () => {
     act(() => result.current.retry());
     await waitFor(() => expect(searchCities).toHaveBeenCalledTimes(4));
     expect(result.current.state.status).toBe('error');
+  });
+
+  it('ends an unresponsive request with a timeout error', async () => {
+    vi.useFakeTimers();
+    vi.mocked(searchCities).mockImplementation(
+      (_query, signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+    const { result, unmount } = renderHook(() => useWeather());
+
+    act(() => result.current.search('Lisboa'));
+    expect(result.current.state.status).toBe('searching');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    expect(result.current.state).toMatchObject({
+      status: 'error',
+      message: 'A busca demorou mais de 30 segundos. Tente novamente.',
+    });
+    unmount();
   });
 });

@@ -105,6 +105,17 @@ describe('searchCities', () => {
     expect(requestedUrl.searchParams.get('format')).toBe('json');
   });
 
+  it('encodes special characters in the city query without adding URL parameters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ results: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await searchCities('São Paulo & região');
+
+    const requestedUrl = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(requestedUrl.searchParams.get('name')).toBe('sao paulo & regiao');
+    expect([...requestedUrl.searchParams.keys()]).toEqual(['name', 'count', 'language', 'format']);
+  });
+
   it('reports HTTP and network errors with a typed error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({}, 503)));
     await expect(searchCities('Lisboa')).rejects.toBeInstanceOf(WeatherServiceError);

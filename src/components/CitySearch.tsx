@@ -3,9 +3,10 @@ import { type FormEvent, useId, useState } from 'react';
 interface CitySearchProps {
   onSearch: (city: string) => void;
   disabled?: boolean;
+  busy?: boolean;
 }
 
-export default function CitySearch({ onSearch, disabled = false }: CitySearchProps) {
+export default function CitySearch({ onSearch, disabled = false, busy = false }: CitySearchProps) {
   const inputId = useId();
   const validationMessageId = useId();
   const [city, setCity] = useState('');
@@ -33,6 +34,7 @@ export default function CitySearch({ onSearch, disabled = false }: CitySearchPro
     <form
       role="search"
       aria-label="Buscar cidade"
+      aria-busy={busy}
       onSubmit={handleSubmit}
       className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 shadow-glass backdrop-blur-md sm:p-5"
     >
@@ -58,7 +60,7 @@ export default function CitySearch({ onSearch, disabled = false }: CitySearchPro
         <button
           type="submit"
           disabled={disabled}
-          className="inline-flex h-12 items-center justify-center rounded-xl bg-accent-500 px-5 font-semibold text-night-900 transition-colors hover:bg-accent-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:ring-offset-night-900 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-28"
+          className="inline-flex h-12 items-center justify-center rounded-xl bg-accent-500 px-5 font-semibold text-night-900 transition-colors hover:bg-accent-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:ring-offset-night-900 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-accent-500 sm:min-w-28"
         >
           Buscar
         </button>

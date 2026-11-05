@@ -1,11 +1,11 @@
-import { beforeEach, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { getWeather, searchCities } from '../../src/services/openMeteoService';
+import { beforeEach, vi } from 'vitest';
 import App from '../../src/App';
 import { mockWeather } from '../../src/mocks/mockWeather';
+import { GeolocationServiceError, getCurrentLocation } from '../../src/services/geolocationService';
+import { getWeather, searchCities } from '../../src/services/openMeteoService';
 import type { City } from '../../src/types/weather';
-import { getCurrentLocation, GeolocationServiceError } from '../../src/services/geolocationService';
 
 vi.mock('../../src/services/geolocationService', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/geolocationService')>()),
@@ -72,8 +72,28 @@ describe('App', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Obtendo sua localização...');
     expect(screen.getByRole('button', { name: 'Usar localização atual' })).toBeDisabled();
+    expect(screen.getByRole('search', { name: 'Buscar cidade' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
     expect(screen.getByRole('searchbox', { name: 'Cidade' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Buscar' })).toBeEnabled();
+  });
+
+  it('moves focus to the search results after a keyboard search', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByRole('searchbox', { name: 'Cidade' }), 'São Paulo');
+    await user.keyboard('{Enter}');
+
+    const results = await screen.findByRole('region', { name: 'Resultado da consulta' });
+    expect(results).toHaveFocus();
+    expect(screen.getByRole('search', { name: 'Buscar cidade' })).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    expect(screen.getByRole('heading', { name: 'Resultados da busca' })).toBeInTheDocument();
   });
 
   it('does not show mock weather before a city is selected', () => {
