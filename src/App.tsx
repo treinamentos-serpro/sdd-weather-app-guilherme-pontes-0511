@@ -1,27 +1,19 @@
 import { useState } from 'react';
 import CitySearch from './components/CitySearch';
+import CityResults from './components/CityResults';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
 import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import TemperatureUnitToggle from './components/TemperatureUnitToggle';
-import { normalizeCityQuery } from './lib/normalizeCityQuery';
-import { mockWeather } from './mocks/mockWeather';
+import { useWeather } from './hooks/useWeather';
 import type { TemperatureUnit } from './types/weather';
-
-type AppStatus = 'idle' | 'loading' | 'empty' | 'error' | 'success';
 
 export default function App() {
   const [unit, setUnit] = useState<TemperatureUnit>('C');
-  const [status, setStatus] = useState<AppStatus>('success');
-
-  const handleSearch = (city: string) => {
-    const requestedCity = normalizeCityQuery(city);
-    const mockCity = normalizeCityQuery(mockWeather.location.label);
-
-    setStatus(requestedCity === mockCity ? 'success' : 'empty');
-  };
+  const weather = useWeather();
+  const { state } = weather;
 
   return (
     <div className="min-h-screen bg-night-900 text-slate-100">
@@ -41,42 +33,48 @@ export default function App() {
 
           <div className="flex min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center sm:justify-end">
             <div className="min-w-0 sm:w-full sm:max-w-md">
-              <CitySearch onSearch={handleSearch} disabled={status === 'loading'} />
+              <CitySearch onSearch={weather.search} />
             </div>
             <TemperatureUnitToggle unit={unit} onChange={setUnit} />
           </div>
         </header>
 
         <main className="flex flex-1 flex-col gap-8">
-          {status === 'loading' && <LoadingState />}
-          {status === 'error' && (
-            <ErrorState
-              message="O serviço de previsão está indisponível no momento."
-              onRetry={() => setStatus('success')}
-            />
+          {state.status === 'searching' && (
+            <LoadingState message="Buscando cidades..." />
           )}
-          {status === 'empty' && (
+          {state.status === 'loadingWeather' && (
+            <LoadingState message="Carregando o clima da cidade..." />
+          )}
+          {(state.status === 'results' ||
+            (state.status === 'error' && state.cities.length > 0)) && (
+            <CityResults cities={state.cities} onSelect={weather.selectCity} />
+          )}
+          {state.status === 'error' && (
+            <ErrorState message={state.message} onRetry={weather.retry} />
+          )}
+          {state.status === 'empty' && (
             <EmptyState
               title="Cidade não encontrada"
-              description="No modo de demonstração, tente buscar por São Paulo."
+              description="Nenhuma cidade foi encontrada. Confira o nome ou tente outra busca."
             />
           )}
-          {status === 'idle' && (
+          {state.status === 'idle' && (
             <EmptyState
               title="Encontre o clima da sua cidade"
               description="Use a busca acima para começar."
             />
           )}
-          {status === 'success' && (
+          {state.status === 'ready' && (
             <>
               <CurrentWeather
-                location={mockWeather.location}
-                current={mockWeather.snapshot.current}
+                location={state.location}
+                current={state.snapshot.current}
                 unit={unit}
               />
               <ForecastList
-                expectedDates={mockWeather.snapshot.expectedDates}
-                forecast={mockWeather.snapshot.nextFiveDays}
+                expectedDates={state.snapshot.expectedDates}
+                forecast={state.snapshot.nextFiveDays}
                 unit={unit}
               />
             </>
@@ -84,7 +82,7 @@ export default function App() {
         </main>
 
         <footer className="mt-8 border-t border-white/10 pt-4 text-sm text-slate-400">
-          Dados de demonstração para desenvolver a interface.
+          Dados meteorológicos fornecidos pela Open-Meteo.
         </footer>
       </div>
     </div>
