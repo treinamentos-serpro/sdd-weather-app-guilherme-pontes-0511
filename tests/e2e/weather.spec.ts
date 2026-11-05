@@ -78,6 +78,31 @@ test('communicates an empty city search without showing weather', async ({ page 
   await expect(page.getByRole('region', { name: 'Recife' })).toHaveCount(0);
 });
 
+test('recovers from a failed geocoding request after one automatic retry', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/geocoding-api.open-meteo.com/v1/search?**', (route) => {
+    requests += 1;
+    if (requests < 3) {
+      return route.fulfill({ status: 503, json: {} });
+    }
+    return route.fulfill({ json: cityResults });
+  });
+  await page.route('**/api.open-meteo.com/v1/forecast?**', (route) =>
+    route.fulfill({ json: forecast }),
+  );
+  await page.goto('/');
+
+  await page.getByRole('searchbox', { name: 'Cidade' }).fill('Recife');
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect(requests).toBe(2);
+
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await page.getByRole('button', { name: /Recife/ }).click();
+  await expect(page.getByRole('region', { name: 'Recife' })).toContainText('0 °C');
+  expect(requests).toBe(3);
+});
+
 test('supports the main city-search flow in a 375 by 812 mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await installWeatherRoutes(page, cityResults);

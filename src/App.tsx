@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import CitySearch from './components/CitySearch';
+import { useEffect, useRef, useState } from 'react';
 import CityResults from './components/CityResults';
+import CitySearch from './components/CitySearch';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
 import LocationButton from './components/LocationButton';
@@ -15,6 +15,22 @@ export default function App() {
   const [unit, setUnit] = useState<TemperatureUnit>('C');
   const weather = useWeather();
   const { state } = weather;
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const isLoading =
+    state.status === 'searching' ||
+    state.status === 'locating' ||
+    state.status === 'loadingWeather';
+
+  useEffect(() => {
+    if (
+      state.status === 'results' ||
+      state.status === 'empty' ||
+      state.status === 'ready' ||
+      state.status === 'error'
+    ) {
+      resultsRef.current?.focus();
+    }
+  }, [state.status]);
 
   return (
     <div className="min-h-screen bg-night-900 text-slate-100">
@@ -34,7 +50,7 @@ export default function App() {
 
           <div className="flex min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center sm:justify-end">
             <div className="min-w-0 sm:w-full sm:max-w-md">
-              <CitySearch onSearch={weather.search} />
+              <CitySearch onSearch={weather.search} busy={isLoading} />
               <div className="mt-3">
                 <LocationButton
                   onLocate={weather.useCurrentLocation}
@@ -50,50 +66,58 @@ export default function App() {
         </header>
 
         <main className="flex flex-1 flex-col gap-8">
-          {state.status === 'searching' && <LoadingState message="Buscando cidades..." />}
-          {state.status === 'loadingWeather' && (
-            <LoadingState
-              message={
-                state.source === 'current'
-                  ? 'Carregando o clima da localização atual...'
-                  : 'Carregando o clima da cidade...'
-              }
-            />
-          )}
-          {state.status === 'locating' && <LoadingState message="Obtendo sua localização..." />}
-          {(state.status === 'results' ||
-            (state.status === 'error' && state.cities.length > 0)) && (
-            <CityResults cities={state.cities} onSelect={weather.selectCity} />
-          )}
-          {state.status === 'error' && (
-            <ErrorState message={state.message} onRetry={weather.retry} />
-          )}
-          {state.status === 'empty' && (
-            <EmptyState
-              title="Cidade não encontrada"
-              description="Nenhuma cidade foi encontrada. Confira o nome ou tente outra busca."
-            />
-          )}
-          {state.status === 'idle' && (
-            <EmptyState
-              title="Encontre o clima da sua cidade"
-              description="Use a busca acima para começar."
-            />
-          )}
-          {state.status === 'ready' && (
-            <>
-              <CurrentWeather
-                location={state.location}
-                current={state.snapshot.current}
-                unit={unit}
+          <div
+            ref={resultsRef}
+            role="region"
+            aria-label="Resultado da consulta"
+            tabIndex={-1}
+            className="rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:ring-offset-night-900"
+          >
+            {state.status === 'searching' && <LoadingState message="Buscando cidades..." />}
+            {state.status === 'loadingWeather' && (
+              <LoadingState
+                message={
+                  state.source === 'current'
+                    ? 'Carregando o clima da localização atual...'
+                    : 'Carregando o clima da cidade...'
+                }
               />
-              <ForecastList
-                expectedDates={state.snapshot.expectedDates}
-                forecast={state.snapshot.nextFiveDays}
-                unit={unit}
+            )}
+            {state.status === 'locating' && <LoadingState message="Obtendo sua localização..." />}
+            {(state.status === 'results' ||
+              (state.status === 'error' && state.cities.length > 0)) && (
+              <CityResults cities={state.cities} onSelect={weather.selectCity} />
+            )}
+            {state.status === 'error' && (
+              <ErrorState message={state.message} onRetry={weather.retry} />
+            )}
+            {state.status === 'empty' && (
+              <EmptyState
+                title="Cidade não encontrada"
+                description="Nenhuma cidade foi encontrada. Confira o nome ou tente outra busca."
               />
-            </>
-          )}
+            )}
+            {state.status === 'idle' && (
+              <EmptyState
+                title="Encontre o clima da sua cidade"
+                description="Use a busca acima para começar."
+              />
+            )}
+            {state.status === 'ready' && (
+              <>
+                <CurrentWeather
+                  location={state.location}
+                  current={state.snapshot.current}
+                  unit={unit}
+                />
+                <ForecastList
+                  expectedDates={state.snapshot.expectedDates}
+                  forecast={state.snapshot.nextFiveDays}
+                  unit={unit}
+                />
+              </>
+            )}
+          </div>
         </main>
 
         <footer className="mt-8 border-t border-white/10 pt-4 text-sm text-slate-400">
